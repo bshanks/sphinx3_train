@@ -1,0 +1,87 @@
+This file describes how to train Voice Keyboard to better understand your particular voice and microphone.
+
+This part of the project is even more slipshod and less polished then the rest of it, if you can believe it. You will need to know your way around the GNU/Linux commandline in order to follow the directions in this file.
+
+The basic idea is that we will make a number of recordings of you speaking known phrases. A set of such recordings, combined with the "answer key" (a list of what you said in each recording), is called a "training set". After making one or more training sets, we will feed them to the program for processing.
+
+First add the "bin" directory of voice-keyboard to $PATH, for example,
+  export PATH=$PATH:/home/bshanks/prog/speech/voice-keyboard/bin
+
+Training will create alot of files so to keep things tidy you probably want to do it in a subfolder:
+
+    mkdir mytrain
+    cd mytrain
+
+The folder must contain a dictionary named voice-keyboard-current.dic, so copy it in. It also needs a file named dictionary_list whose each line contains a path to a dictionary:
+
+    cp ../voice-keyboard-current.dic .
+    echo voice-keyboard-current.dic > dictionary_list
+
+Next you must find or create a text file containing a list of phrases that you wish to train on. Each line of that file should contain one phrase. Some or all of the lines can contain individual words rather than phrases if you prefer. You may name the file whatever you want as long as the name ends in ".txt". A collection of such files has been provided in the folder training_corpora.
+
+Move the text file inside of the mytrain folder. 
+
+    cp ../training_corpora/*
+
+Let's say that the name of the training corpus that you try first is "comma_gets_a_cure.txt".
+
+Next you must quit Voice Keyboard; the following program cannot be run while Voice Keyboard is running. Now run
+
+    record_training_set.sh comma_gets_a_cure /dev/dsp1
+
+where you replace my_training_set_name with your training set name (omitting the .txt), and replace /dev/dsp1 with the location of your soundcard device.
+
+This program goes through each line in the text file, displays (1) the line number, (2) what you are supposed to say, (3) the way that the program wants you to pronounce each word on that line (sometimes multiple allowed pronunciations are given), and waits for you to hit Enter. For example, the program might display something like:
+
+    25
+    THIS MAY BE THE EXCEPTION TO THE RULE 
+    THIS                          DH IH S
+    MAY                           M EY
+    BE                            B IY
+    BE(2)                         B IY
+    THE                           DH AH
+    THE(2)                        DH AH
+    THE(3)                        DH IY
+    EXCEPTION                     IH K S EH P SH AH N
+    TO                            T UW
+    TO(2)                         T IH
+    TO(3)                         T AH
+    THE                           DH AH
+    THE(2)                        DH AH
+    THE(3)                        DH IY
+    RULE                          R UW L
+
+which means that this is the 25th line of the file, that you are supposed to say "This may be the exception to the rule", that you should pronounce "THIS" as "DH IH S" (DH means the "th" sound), etc.
+
+When you hit Enter, the program starts recording from the microphone -- the recording will continue until you end it by pressing cntl-C. After going through the entire text file, the program goes through it a second time. This way you will have two recordings for each line in the text file.
+
+record_training_set.sh creates a folder named training_sets, and creates two subfolders within it to store the two sets of recordings. It also creates files named my_training_set_name.transcription and my_training_set_name.listoffiles inside training_sets, and it also appends my_training_set_name to the file training_set_list. It also creates a file named filler_dict.filler. It also does some processing on the new training sets, and creates a bunch of files ending in ".mfc" in the mytrain folder.
+
+After you've recorded some training data, the next step is to run vk_train.sh, which takes one argument, the path to the acoustic model. For example:
+
+    vk_train.sh ../../wsj_all_cont_3no_4000_32
+
+vk_train reads the file training_set_list to know which training sets you want it to train on. The main result of vk_train is a file named mllr_matrix.
+
+The last step is to manually edit voice-keyboard.py to tell it to use the mllr_matrix file that you just created. Open voice-keyboard.py in any text editor and find the line near the top that looks like:
+
+    MLLR_ARGS = ''
+
+This line can be used to provide sphinx3_livesegment with a command line option. Add an "-mllr" option with the path to your mllr_matrix file as an argument, for example:
+ 
+    MLLR_ARGS = '-mllr /home/bshanks/prog/speech/voice-keyboard/mytrain/mllr_matrix'
+
+(although the line is indented in the above example, the actual line in the file must not be indented)
+
+Now restart voice-keyboard.py:
+
+    cd ..; python voice-keyboard.py
+
+If everything is working, the debug information that prints at startup should contain (somewhere in the middle) some lines like:
+
+    INFO: kb.c(346): Using MLLR matrix /home/bshanks/prog/speech/voice-keyboard/mytrain/mllr_matrix
+    INFO: adaptor.c(115): Reloading mean
+    INFO: cont_mgau.c(161): Reading mixture gaussian file '/home/bshanks/prog/speech/voice-keyboard/wsj_all_cont_3no_4000_32/means'
+    INFO: cont_mgau.c(417): 4120 mixture Gaussians, 32 components, 1 streams, veclen 39
+    INFO: mllr.c(122): Reading MLLR transformation file /home/bshanks/prog/speech/voice-keyboard/mytrain/mllr_matrix
+
